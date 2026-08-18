@@ -1,0 +1,128 @@
+<!--
+  SOC Pipeline - Technitium DNS detection rules
+  Rule-ID range: 116000-116999 (clear of Greenbone 115000-115999 and UniFi 100001-110203).
+
+  Ingest: dns_collector.py JSON via localfile log_format=json -> Wazuh BUILT-IN
+  json decoder extracts fields (event_type, source, server, client, qname, qtype,
+  rcode, response_type, dns_protocol, qname_len, label_count, longest_label,
+  leftmost_label_entropy, blocked). NO custom decoder (native json handles it).
+
+  ALERT DISCIPLINE (DNS is ~200k queries/day; full volume lives in Graylog):
+  - Base rule 116000 = level 0: every DNS event is recorded, NOT alerted.
+  - Single-event anomaly rules fire at LOW levels (3-6): visible/queryable, do NOT
+    page. A single odd query is not an incident; the pattern is.
+  - Frequency rules escalate to paging levels (10-12) only when a client crosses a
+    rate threshold. This is where the real signal is.
+  - Thresholds below are STARTING points; tune against your baseline after go-live.
+
+  PITFALLS captured during build:
+  - Stock Suricata rule 86600 (level 0) matches ANY json event with timestamp +
+    event_type and would swallow these; 116000 chains as its child via if_sid.
+  - Wazuh <field> defaults to OS_Regex (sed-like), where numeric class+anchor
+    patterns like ^[4-9][0-9]$ do NOT behave as PCRE. Numeric-threshold matches use
+    type="pcre2" explicitly.
+  - Wazuh fires ONE rule per event (best match wins, first in tree order). Events
+    can carry multiple properties (blocked AND nxdomain AND high-entropy), so the
+    HIGHER-VALUE detections are ordered FIRST so they win over generic tags.
+  - 'protocol' is reserved in Wazuh's alerts mapping (object); collector emits
+    'dns_protocol' to avoid a mapper_parsing_exception.
+-->
+<group name="dns,technitium,">
+
+  <!-- Base: any Technitium DNS event. Level 0 = recorded, not alerted. -->
+  <rule id="116000" level="0">
+    <if_sid>86600</if_sid>
+    <field name="source">technitium</field>
+    <field name="event_type">dns_query</field>
+    <description>Technitium DNS query (base, not alerted)</description>
+  </rule>
+
+  <!-- ============ Single-event anomaly tags (LOW level, no paging) ============
+       Ordered highest-value first so multi-property events resolve to the strongest
+       signal (Wazuh picks the first matching sibling). -->
+
+  <!-- Long label => DNS tunneling / data exfil (base32/64 in a label). longest_label
+       is an integer string; pcre2 for a real numeric-range match (>=40). -->
+  <rule id="116011" level="5">
+    <if_sid>116000</if_sid>
+    <field name="longest_label" type="pcre2">^([4-9][0-9]|[1-9][0-9]{2,})$</field>
+    <description>DNS: long label (possible tunneling) len=$(longest_label) $(qname) from $(client)</description>
+    <group>dns_tunneling,dns_anomaly,</group>
+    <mitre><id>T1071.004</id></mitre>
+  </rule>
+
+  <!-- TXT / NULL query types are classic tunneling/exfil carriers. -->
+  <rule id="116012" level="4">
+    <if_sid>116000</if_sid>
+    <field name="qtype" type="pcre2">^(TXT|NULL)$</field>
+    <description>DNS: $(qtype) query (tunneling carrier) $(qname) from $(client)</description>
+    <group>dns_tunneling,dns_anomaly,</group>
+    <mitre><id>T1071.004</id></mitre>
+  </rule>
+
+  <!-- High-entropy leftmost label => possible DGA. entropy renders as a padded
+       float string (e.g. 3.585000); pcre2 match >=3.5. -->
+  <rule id="116010" level="4">
+    <if_sid>116000</if_sid>
+    <field name="leftmost_label_entropy" type="pcre2">^(3\.[5-9]|[4-9]|[1-9][0-9])</field>
+    <description>DNS: high-entropy label (possible DGA) $(qname) from $(client)</description>
+    <group>dns_dga,dns_anomaly,</group>
+    <mitre><id>T1568.002</id></mitre>
+  </rule>
+
+  <!-- Blocked query (Technitium blocklist hit: local "Blocked" or "UpstreamBlocked").
+       block_type carries which; a single block is routine (adblock/telemetry). -->
+  <rule id="116013" level="3">
+    <if_sid>116000</if_sid>
+    <field name="blocked">true</field>
+    <description>DNS: $(block_type) query $(qname) from $(client)</description>
+    <group>dns_blocked,</group>
+  </rule>
+
+  <!-- NXDOMAIN (recorded low; the FLOOD rule below is the real detection). -->
+  <rule id="116014" level="2">
+    <if_sid>116000</if_sid>
+    <field name="rcode">^NxDomain$</field>
+    <description>DNS: NXDOMAIN $(qname) from $(client)</description>
+    <group>dns_nxdomain,</group>
+  </rule>
+
+  <!-- ============ Frequency-based detections (PAGING) ============ -->
+
+  <!-- NXDOMAIN flood from one client => DGA sweep / C2 domain cycling. -->
+  <rule id="116100" level="10" frequency="40" timeframe="120">
+    <if_matched_sid>116014</if_matched_sid>
+    <same_field>client</same_field>
+    <description>DNS: NXDOMAIN flood from $(client) (possible DGA/C2 beacon)</description>
+    <group>dns_nxdomain,dns_dga,</group>
+    <mitre><id>T1568.002</id></mitre>
+  </rule>
+
+  <!-- Sustained high-entropy labels from one client => DGA in active use. -->
+  <rule id="116101" level="10" frequency="15" timeframe="120">
+    <if_matched_sid>116010</if_matched_sid>
+    <same_field>client</same_field>
+    <description>DNS: repeated high-entropy lookups from $(client) (DGA in use)</description>
+    <group>dns_dga,</group>
+    <mitre><id>T1568.002</id></mitre>
+  </rule>
+
+  <!-- Tunneling burst: repeated long-label from one client => exfil. -->
+  <rule id="116102" level="11" frequency="20" timeframe="120">
+    <if_matched_sid>116011</if_matched_sid>
+    <same_field>client</same_field>
+    <description>DNS: tunneling burst (long labels) from $(client) (possible exfiltration)</description>
+    <group>dns_tunneling,</group>
+    <mitre><id>T1048.003</id></mitre>
+  </rule>
+
+  <!-- Blocklist-hit storm from one client => infected host repeatedly calling out. -->
+  <rule id="116103" level="10" frequency="30" timeframe="300">
+    <if_matched_sid>116013</if_matched_sid>
+    <same_field>client</same_field>
+    <description>DNS: repeated blocked lookups from $(client) (possible infected host)</description>
+    <group>dns_blocked,</group>
+    <mitre><id>T1071.004</id></mitre>
+  </rule>
+
+</group>
