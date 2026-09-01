@@ -43,8 +43,9 @@ DNS is ~100k-200k queries/day. Full volume lives in Graylog. In Wazuh:
 - Base rule (116000, **level 0**): every DNS event recorded, not alerted.
 - Single-event anomalies (long label, high entropy, NXDOMAIN, blocked) fire at **low levels (3-6)**:
   queryable, do **not** page. One odd query is not an incident.
-- **Frequency rules escalate to paging (10-12)** only when a client crosses a rate threshold
-  (e.g. many NXDOMAINs or high-entropy lookups in a window) - that's the real signal.
+- Generic NXDOMAIN volume is a rate-limited **level-7 operational anomaly**. Volume alone is not
+  DGA evidence. High-entropy, tunneling, threat-category, and exact-intelligence correlations can
+  still escalate to paging levels (10-12) when their stronger conditions are met.
 
 ## Detection enrichments (computed once, in the collector)
 

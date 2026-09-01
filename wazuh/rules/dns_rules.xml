@@ -65,6 +65,9 @@
   <rule id="116010" level="4">
     <if_sid>116000</if_sid>
     <field name="leftmost_label_entropy" type="pcre2">^(3\.[5-9]|[4-9]|[1-9][0-9])</field>
+    <!-- Shuffle service names and Swarm task-qualified names contain generated
+         identifiers that look random but are internal service discovery. -->
+    <field name="qname" type="pcre2" negate="yes">^(shuffle-[a-z0-9_-]+|[a-z0-9_-]+_[0-9]+-[0-9]+-[0-9]+)(\.[0-9]+\.[a-z0-9]{20,})?\.?$</field>
     <description>DNS: high-entropy label (possible DGA) $(qname) from $(client)</description>
     <group>dns_dga,dns_anomaly,</group>
     <mitre><id>T1568.002</id></mitre>
@@ -89,13 +92,13 @@
 
   <!-- ============ Frequency-based detections (PAGING) ============ -->
 
-  <!-- NXDOMAIN flood from one client => DGA sweep / C2 domain cycling. -->
-  <rule id="116100" level="10" frequency="40" timeframe="120">
+  <!-- Generic NXDOMAIN volume is an operational anomaly, not DGA evidence by
+       itself. Suppress repeats while preserving the low-level query records. -->
+  <rule id="116100" level="7" frequency="40" timeframe="120" ignore="900">
     <if_matched_sid>116014</if_matched_sid>
     <same_field>client</same_field>
-    <description>DNS: NXDOMAIN flood from $(client) (possible DGA/C2 beacon)</description>
-    <group>dns_nxdomain,dns_dga,</group>
-    <mitre><id>T1568.002</id></mitre>
+    <description>DNS: excessive NXDOMAIN responses from $(client)</description>
+    <group>dns_nxdomain,dns_anomaly,</group>
   </rule>
 
   <!-- Sustained high-entropy labels from one client => DGA in active use. -->
