@@ -71,7 +71,7 @@ python3 collector/dns_pipeline.py               # deliver new events to Graylog 
 ```
 
 Full walkthrough (Technitium API, GELF, Wazuh rules + install) in
-[`docs/dns-lane-deployment.md`](docs/dns-lane-deployment.md) and
+[`docs/deployment-example.md`](docs/deployment-example.md) and
 [`docs/technitium-api-reference.md`](docs/technitium-api-reference.md).
 
 ## Repo layout
@@ -94,5 +94,5 @@ integration.*
 
 ## GitLab CI baseline
 
-GitLab CI runs repository integrity validation and centralized ClamAV scanning on the isolated `phase4-untrusted` runner. The baseline validates tracked Python syntax, shell syntax, and JSON parsing without direct Internet access. Repository-specific build and test gates remain additive to this baseline.
+GitLab CI runs repository integrity validation and secret scanning. The baseline validates tracked Python syntax, shell syntax, and JSON parsing, while the secret scan uses a pinned public container image. Repository-specific build and test gates remain additive to this baseline.
 

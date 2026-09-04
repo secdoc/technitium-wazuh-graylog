@@ -9,13 +9,13 @@
 # collector/.dns_state.json means each run only ships new records. Emits one-line
 # JSON status to stdout + /var/log/dns-pull.log.
 #
-# Source of truth: secdoc/soc-pipeline (scripts/dns-pull.sh).
+# Public, portable wrapper.
 set -u
 
-ENVF=/opt/soc/.env
-REPO=/opt/soc/technitium-wazuh-graylog
-PYBIN=/usr/bin/python3           # stdlib-only collector; no venv needed
-LOG=/var/log/dns-pull.log
+ENVF="${SOC_ENV_FILE:-$HOME/.config/soc-pipeline/env}"
+REPO="${SOC_PIPELINE_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
+PYBIN="${PYTHON_BIN:-/usr/bin/python3}"           # stdlib-only collector; no venv needed
+LOG="${DNS_PULL_LOG:-$HOME/.local/state/soc-pipeline/dns-pull.log}"
 
 status() {  # status <ok|error> <message> [extra-json]
   local st="$1" msg="$2" extra="${3:-}"

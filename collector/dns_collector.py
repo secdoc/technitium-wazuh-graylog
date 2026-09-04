@@ -18,7 +18,7 @@ Design notes:
 - Incremental by timestamp: the API supports start=<ISO> ascending. We keep the
   last timestamp per server in a state file and pull start=that on the next run.
 
-Env (from /opt/soc/.env): TECHNITIUM_TOKEN, TECHNITIUM_SERVERS (comma-separated
+Env (from ~/.config/soc-pipeline/env): TECHNITIUM_TOKEN, TECHNITIUM_SERVERS (comma-separated
 host or host:port; default port 5380).
 
 Usage:
@@ -32,7 +32,10 @@ DEFAULT_PORT = 5380
 STATE_DEFAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dns_state.json")
 
 
-def load_env(path="/opt/soc/.env"):
+def load_env(path=None):
+    path = path or os.environ.get(
+        "SOC_ENV_FILE", os.path.expanduser("~/.config/soc-pipeline/env")
+    )
     e = {}
     if os.path.exists(path):
         for line in open(path):
@@ -149,7 +152,7 @@ def main():
     servers_raw = os.environ.get("TECHNITIUM_SERVERS") or env.get("TECHNITIUM_SERVERS", "")
     servers = [s.strip() for s in servers_raw.split(",") if s.strip()]
     if not token or not servers:
-        sys.exit("TECHNITIUM_TOKEN / TECHNITIUM_SERVERS not set in env or /opt/soc/.env")
+        sys.exit("TECHNITIUM_TOKEN / TECHNITIUM_SERVERS not set in env or ~/.config/soc-pipeline/env")
 
     state = {}
     if os.path.exists(args.state):

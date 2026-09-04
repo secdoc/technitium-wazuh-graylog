@@ -12,7 +12,7 @@ One cycle:
 No dedupe layer here: the collector's per-server timestamp state already yields
 only new events per run. Read-only against Technitium. Safe to cron (15 min).
 
-Env (from /opt/soc/.env): TECHNITIUM_TOKEN, TECHNITIUM_SERVERS, GRAYLOG_HOST,
+Env (from ~/.config/soc-pipeline/env): TECHNITIUM_TOKEN, TECHNITIUM_SERVERS, GRAYLOG_HOST,
   WAZUH_SSH_USER, WAZUH_SSH_HOST, WAZUH_SSH_KEY.
 """
 import argparse, json, os, socket, subprocess, sys, tempfile, time
@@ -20,7 +20,10 @@ import argparse, json, os, socket, subprocess, sys, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def load_env(path="/opt/soc/.env"):
+def load_env(path=None):
+    path = path or os.environ.get(
+        "SOC_ENV_FILE", os.path.expanduser("~/.config/soc-pipeline/env")
+    )
     e = {}
     if os.path.exists(path):
         for l in open(path):
